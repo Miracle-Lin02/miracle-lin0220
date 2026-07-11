@@ -11,7 +11,7 @@ const siteMetadata = {
   siteLogo: `${process.env.BASE_PATH || ''}/static/images/logo.png`,
   socialBanner: `${process.env.BASE_PATH || ''}/static/images/twitter-card.png`,
   mastodon: 'https://mastodon.social/@mastodonuser',
-  email: '925804534@qq.com,
+  email: '925804534@qq.com',
   github: 'https://github.com/Miracle-Lin02',
   x: 'https://twitter.com/x',
   // twitter: 'https://twitter.com/Twitter',
