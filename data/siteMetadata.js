@@ -2,7 +2,7 @@
 const siteMetadata = {
   title: 'Miracle-Lin02 Blog',
   author: 'Tails Azimuth',
-  headerTitle: '林思彤de博客',
+  headerTitle: '林思彤 de 博客',
   description: '励志于当芯片系统软件实习生，热衷于学习 Linux 操作系统',
   language: 'en-us',
   theme: 'system', // system, dark or light
