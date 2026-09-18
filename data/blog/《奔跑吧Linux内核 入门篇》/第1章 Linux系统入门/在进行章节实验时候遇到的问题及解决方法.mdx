@@ -1,0 +1,99 @@
+# 实验一
+Q1.在Windows11系统下运行VMare的时候，异常卡顿。
+A1.Windows 开了 Hyper-V，会和 VMware 抢虚拟化
+解决方案：
+关闭 Hyper-V
+1. 在开始菜单搜 `cmd`，右键【以管理员身份运行】
+2. 粘贴这一行，回车
+```
+bcdedit /set hypervisorlaunchtype off
+```
+
+Q2.Windows11和VMare怎么共享文件？
+A2.直接拖就行
+
+# 实验2
+Q3.Ubuntu内核版本跟书上不一样怎么办?
+miracle@ubuntu:~/Desktop/linux-4.16.3$ cp /boot/config-4.4.0-8-generic.config
+cp: missing destination file operand after '/boot/config-4.4.0-8-generic.config'
+A3.
+```
+cp /boot/config-$(uname -r) .config
+```
+
+Q4.书上的命令 make -jn 运行不了
+A4.
+```
+make -j$(nproc)
+```
+ 才是正确编译内核的命令
+
+Q5.报错No rule to make target 'debian/canonical-certs.pem', needed by 'certs/x509_certificate_list'
+A5.
+直接修改.config 文件，关闭证书
+```
+sed -i 's/CONFIG_SYSTEM_TRUSTED_KEYS="debian\/canonical-certs.pem"/CONFIG_SYSTEM_TRUSTED_KEYS=""/g' .config
+sed -i 's/CONFIG_SYSTEM_REVOCATION_KEYS="debian\/canonical-revoked-certs.pem"/CONFIG_SYSTEM_REVOCATION_KEYS=""/g' .config
+```
+
+## 一点碎碎念
+这个内核编译了一个多小时了还没编译完，好困TAT
+两个小时了TAT睡觉了不跑了
+
+太好了一觉睡醒终于编译完了
+
+Q6.报错
+对文件 “D:\VMare\Ubuntu 64 位.vmdk” 的操作失败。
+如果该文件位于远程文件系统上，请确保网络连接以及该磁盘所在的服务器正常工作。如果该文件位于可移动介质中，请重新连接该介质。
+选择 重试 (R) 以重试该操作。
+选择 取消 以关闭虚拟机电源。
+选择 继续 (C) 以将该错误转发到客户机操作系统。
+A6.D盘爆了，需要清理D盘
+
+Q7.Ubuntu如何进入GRUB界面进行内核切换？
+A7.开机时长按shift
+
+# 实验3
+Q8.网络错误下载不了软件，能ping通但是下载不了
+A8.虚拟机**DNS 完全失效**，域名解析全部失败，ping IP 可以，ping 域名不行
+    方法1（临时解决）：
+    把软件源换成阿里云源
+    ```
+    sudo nano /etc/apt/sources.list
+    ```
+    ```
+    deb http://mirrors.aliyun.com/ubuntu/ bionic main restricted universe multiverse
+    deb http://mirrors.aliyun.com/ubuntu/ bionic-security main restricted universe multiverse
+    deb http://mirrors.aliyun.com/ubuntu/ bionic-updates main restricted universe multiverse
+    deb http://mirrors.aliyun.com/ubuntu/ bionic-backports main restricted universe multiverse
+    ```
+    更新
+    ```
+    sudo apt update
+    ```
+    ```
+    sudo nano /etc/resolv.conf
+    ```
+    ```
+    nameserver 223.5.5.5
+    nameserver 114.114.114.114
+    ```
+    Q9. 书上提供的git仓库网页不存在
+    A9.
+    ```
+    git clone https://e.coding.net/benshushu/runninglinuxkernel_4.0.git -b rlk_basic
+    ```
+    自己找的
+    相应的GitHub网址：https://github.com/figozhang/runninglinuxkernel_4.0
+
+# 实验4
+下载 Linux 4.0 内核：
+```
+wget https://cdn.kernel.org/pub/linux/kernel/v4.x/linux-4.0.tar.xz
+tar -xf linux-4.0.tar.xz
+```
+下载 busybox 工具包：
+```
+wget https://busybox.net/downloads/busybox-1.24.2.tar.bz2
+tar -jxvf busybox-1.24.2.tar.bz2
+```
