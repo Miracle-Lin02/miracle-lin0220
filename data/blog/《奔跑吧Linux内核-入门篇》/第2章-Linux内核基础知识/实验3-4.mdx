@@ -1,0 +1,366 @@
+---
+title: "《奔跑吧Linux内核入门篇》第2章 —— 实验 3-5"
+date: "2026-09-20"
+tags: [linux,kernel_primary]
+draft: false
+summary: "做第 2 章实验 3-5 时遇到的问题及解决方法"
+---
+## 实验 3：红黑树
+
+### Q1. 如何检验 vim 能不能复制？
+### A1.终端输入命令
+    ```
+    vim --version | grep clipboard
+    ```
+    显示 +clipboard 就可以复制
+
+### Q2. vim 复制不了怎么办？
+### A2. 安装完整版 vim
+    ```
+    sudo apt install vim-gtk3
+    ```
+
+### Q3. vim 如何复制黏贴全部内容？
+### A3. 按 ESC 进入普通模式 -> 输入 ggVG 全部高亮选中 -> "+y 进行复制
+
+### Q4. vim 怎么进行查找
+### A4. 按 ESC 进入普通模式 -> /你要搜的文字 -> 回车 -> n：跳到下一个匹配 N：跳到上一个匹配
+
+移植后的完整版代码如下：
+rbtree.h：
+```
+#ifndef RBTREE_H
+#define RBTREE_H
+
+// 0. 来自 include/linux/stddef.h
+#undef NULL
+#define NULL ((void *)0)
+
+enum {
+	false	= 0,
+	true	= 1
+};
+
+#undef offsetof
+#ifdef __compiler_offsetof
+#define offsetof(TYPE,MEMBER) __compiler_offsetof(TYPE,MEMBER)
+#else
+#define offsetof(TYPE, MEMBER) ((size_t) &((TYPE *)0)->MEMBER)
+#endif
+
+// 0. 来自 include/linux/kernel.h
+#define container_of(ptr, type, member) ({                      \
+        const typeof( ((type *)0)->member ) *__mptr = (ptr);    \
+        (type *)( (char *)__mptr - offsetof(type,member) );})
+
+// 1. 来自 include/rbtree.h
+struct rb_node {
+	unsigned long  __rb_parent_color;
+	struct rb_node *rb_right;
+	struct rb_node *rb_left;
+} __attribute__((aligned(sizeof(long))));
+    /* The alignment might seem pointless, but allegedly CRIS needs it */
+
+struct rb_root {
+	struct rb_node *rb_node;
+};
+
+
+#define rb_parent(r)   ((struct rb_node *)((r)->__rb_parent_color & ~3))
+
+#define RB_ROOT	(struct rb_root) { NULL, }
+#define	rb_entry(ptr, type, member) container_of(ptr, type, member)
+
+static inline void rb_link_node(struct rb_node * node, struct rb_node * parent,
+				struct rb_node ** rb_link)
+{
+	node->__rb_parent_color = (unsigned long)parent;
+	node->rb_left = node->rb_right = NULL;
+
+	*rb_link = node;
+}
+
+// 2. 来自 include/rbtree_augmented.h
+#define	RB_RED		0
+#define	RB_BLACK	1
+
+#define __rb_parent(pc)    ((struct rb_node *)(pc & ~3))
+
+#define __rb_color(pc)     ((pc) & 1)
+#define __rb_is_black(pc)  __rb_color(pc)
+#define __rb_is_red(pc)    (!__rb_color(pc))
+#define rb_color(rb)       __rb_color((rb)->__rb_parent_color)
+#define rb_is_red(rb)      __rb_is_red((rb)->__rb_parent_color)
+#define rb_is_black(rb)    __rb_is_black((rb)->__rb_parent_color)
+
+static inline void rb_set_parent(struct rb_node *rb, struct rb_node *p)
+{
+	rb->__rb_parent_color = rb_color(rb) | (unsigned long)p;
+}
+
+static inline void rb_set_parent_color(struct rb_node *rb,
+				       struct rb_node *p, int color)
+{
+	rb->__rb_parent_color = (unsigned long)p | color;
+}
+
+static inline void
+__rb_change_child(struct rb_node *old, struct rb_node *new,
+		  struct rb_node *parent, struct rb_root *root)
+{
+	if (parent) {
+		if (parent->rb_left == old)
+			parent->rb_left = new;
+		else
+			parent->rb_right = new;
+	} else
+		root->rb_node = new;
+}
+
+// 3. 来自 lib/rbtree.c
+static inline void rb_set_black(struct rb_node *rb)
+{
+	rb->__rb_parent_color |= RB_BLACK;
+}
+
+static inline struct rb_node *rb_red_parent(struct rb_node *red)
+{
+	return (struct rb_node *)red->__rb_parent_color;
+}
+
+/*
+ * Helper function for rotations:
+ * - old's parent and color get assigned to new
+ * - old gets assigned new as a parent and 'color' as a color.
+ */
+static inline void
+__rb_rotate_set_parents(struct rb_node *old, struct rb_node *new,
+			struct rb_root *root, int color)
+{
+	struct rb_node *parent = rb_parent(old);
+	new->__rb_parent_color = old->__rb_parent_color;
+	rb_set_parent_color(old, new, color);
+	__rb_change_child(old, new, parent, root);
+}
+
+static __always_inline void
+__rb_insert(struct rb_node *node, struct rb_root *root,
+	    void (*augment_rotate)(struct rb_node *old, struct rb_node *new))
+{
+	struct rb_node *parent = rb_red_parent(node), *gparent, *tmp;
+
+	while (true) {
+		/*
+		 * Loop invariant: node is red
+		 *
+		 * If there is a black parent, we are done.
+		 * Otherwise, take some corrective action as we don't
+		 * want a red root or two consecutive red nodes.
+		 */
+		if (!parent) {
+			rb_set_parent_color(node, NULL, RB_BLACK);
+			break;
+		} else if (rb_is_black(parent))
+			break;
+
+		gparent = rb_red_parent(parent);
+
+		tmp = gparent->rb_right;
+		if (parent != tmp) {	/* parent == gparent->rb_left */
+			if (tmp && rb_is_red(tmp)) {
+				/*
+				 * Case 1 - color flips
+				 *
+				 *       G            g
+				 *      / \          / \
+				 *     p   u  -->   P   U
+				 *    /            /
+				 *   n            n
+				 *
+				 * However, since g's parent might be red, and
+				 * 4) does not allow this, we need to recurse
+				 * at g.
+				 */
+				rb_set_parent_color(tmp, gparent, RB_BLACK);
+				rb_set_parent_color(parent, gparent, RB_BLACK);
+				node = gparent;
+				parent = rb_parent(node);
+				rb_set_parent_color(node, parent, RB_RED);
+				continue;
+			}
+
+			tmp = parent->rb_right;
+			if (node == tmp) {
+				/*
+				 * Case 2 - left rotate at parent
+				 *
+				 *      G             G
+				 *     / \           / \
+				 *    p   U  -->    n   U
+				 *     \           /
+				 *      n         p
+				 *
+				 * This still leaves us in violation of 4), the
+				 * continuation into Case 3 will fix that.
+				 */
+				parent->rb_right = tmp = node->rb_left;
+				node->rb_left = parent;
+				if (tmp)
+					rb_set_parent_color(tmp, parent,
+							    RB_BLACK);
+				rb_set_parent_color(parent, node, RB_RED);
+				augment_rotate(parent, node);
+				parent = node;
+				tmp = node->rb_right;
+			}
+
+			/*
+			 * Case 3 - right rotate at gparent
+			 *
+			 *        G           P
+			 *       / \         / \
+			 *      p   U  -->  n   g
+			 *     /                 \
+			 *    n                   U
+			 */
+			gparent->rb_left = tmp;  /* == parent->rb_right */
+			parent->rb_right = gparent;
+			if (tmp)
+				rb_set_parent_color(tmp, gparent, RB_BLACK);
+			__rb_rotate_set_parents(gparent, parent, root, RB_RED);
+			augment_rotate(gparent, parent);
+			break;
+		} else {
+			tmp = gparent->rb_left;
+			if (tmp && rb_is_red(tmp)) {
+				/* Case 1 - color flips */
+				rb_set_parent_color(tmp, gparent, RB_BLACK);
+				rb_set_parent_color(parent, gparent, RB_BLACK);
+				node = gparent;
+				parent = rb_parent(node);
+				rb_set_parent_color(node, parent, RB_RED);
+				continue;
+			}
+
+			tmp = parent->rb_left;
+			if (node == tmp) {
+				/* Case 2 - right rotate at parent */
+				parent->rb_left = tmp = node->rb_right;
+				node->rb_right = parent;
+				if (tmp)
+					rb_set_parent_color(tmp, parent,
+							    RB_BLACK);
+				rb_set_parent_color(parent, node, RB_RED);
+				augment_rotate(parent, node);
+				parent = node;
+				tmp = node->rb_left;
+			}
+
+			/* Case 3 - left rotate at gparent */
+			gparent->rb_right = tmp;  /* == parent->rb_left */
+			parent->rb_left = gparent;
+			if (tmp)
+				rb_set_parent_color(tmp, gparent, RB_BLACK);
+			__rb_rotate_set_parents(gparent, parent, root, RB_RED);
+			augment_rotate(gparent, parent);
+			break;
+		}
+	}
+}
+
+static inline void dummy_rotate(struct rb_node *old, struct rb_node *new) {}
+
+void rb_insert_color(struct rb_node *node, struct rb_root *root)
+{
+	__rb_insert(node, root, dummy_rotate);
+}
+
+#endif
+```
+main.c：
+```
+#include <stdio.h> // 打印
+#include <stdlib.h> // 使用rand()随机数
+#include <time.h> // time()设置随机种子
+#include "rbtree.h"
+
+struct my_data {
+	int val; // 我们要存的整数
+	struct rb_node node; // 红黑树节点
+};
+
+// 红黑树查找函数
+struct my_data *rb_search(struct rb_root *root, int target)
+{
+	struct rb_node *n = root->rb_node;
+	while (n) {
+		struct my_data *data = rb_entry(n, struct my_data, node);
+		if (target < data->val)
+			n = n->rb_left;
+		else if (target > data->val)
+			n = n->rb_right;
+		else
+			return data;
+	}
+	return NULL;
+}
+
+// 红黑树插入
+void rb_insert(struct rb_root *root, struct my_data *new_data)
+{
+	struct rb_node **p = &root->rb_node;
+	struct rb_node *parent = NULL;
+
+	while (*p) {
+		struct my_data *data = rb_entry(*p, struct my_data, node);
+		parent = *p;
+		if (new_data->val < data->val)
+			p = &(*p)->rb_left;
+		else
+			p = &(*p)->rb_right;
+	}
+	rb_link_node(&new_data->node, parent, p);
+	rb_insert_color(&new_data->node, root);
+}
+
+#define COUNT 10000
+struct my_data arr[COUNT];
+
+int main(void)
+{
+	struct rb_root root = RB_ROOT;
+	srand((unsigned)time(NULL));
+
+	printf("开始插入 %d 个随机数\n", COUNT);
+	for(int i = 0; i < COUNT; i++) {
+		arr[i].val = rand();
+		rb_insert(&root, &arr[i]);
+	}
+	printf("插入完成\n");
+
+	// 查找测试
+	int search_val = arr[5000].val;
+	struct my_data *res = rb_search(&root, search_val);
+	if(res) {
+		printf("查找成功！找到数值：%d\n", res->val);
+	} else {
+		printf("查找失败\n");
+	}
+
+	res = rb_search(&root, -1);
+	if(!res) {
+		printf("查找不存在的值，返回NULL，符合预期\n");
+	}
+
+	return 0;
+}
+```
+
+## 实验 4：使用 Vim 工具
+我感觉这个在平时写代码的时候就可以锻炼啦，这里就不做专门训练了。
+
+## 实验 5：把 Vim 打造成一个强大的 IDE 编辑工具 
+这些工具都要在内核根目录下才能执行
+
+## 今日碎碎念
+我不能再沉迷于王者了(╯▔皿▔)╯
