@@ -1,0 +1,121 @@
+---
+title: "《奔跑吧Linux内核入门篇》第2章 —— 实验 6-8"
+date: "2026-09-21"
+tags: [linux,kernel_primary]
+draft: false
+summary: "做第 2 章实验 6-8 时遇到的问题及解决方法"
+---
+## 实验 6：建立一个 git 本地仓库
+### Q1.
+    找不到 opt 目录怎么办？
+### A1.
+    /opt 是 Linux 系统标准目录，有些精简版 Ubuntu（虚拟机最小化安装）默认没有创建 /opt 文件夹/
+
+    所以需要我们自己建一个。
+
+    /opt 属于系统根目录，普通用户没有写入权限，必须加 sudo。
+    ```
+    sudo mkdir -p /opt/git
+    # 修改这个目录的所有者为用户 miracle，这样就不用每次都 sudo 了
+    sudo chown miracle:miracle /opt/git
+    ```
+
+### Q2.
+    书中远程仓库 ssh://ben@193.168.0.1:/opt/git/test.git 的地址是哪里来的
+### A2.
+    ben：服务器的用户名（miracle)
+
+    192.168.0.1：服务器机器 IP 地址
+    ```
+    ip a
+    ```
+    inet 后面, / 前面的地址就是虚拟机 IP(192.168.64.128)
+
+### Q3.
+    报错：miracle@ubuntu:~/test$ git push origin master
+
+    ssh: connect to host 192.168.64.128 port 22: Connection refused
+
+    fatal: Could not read from remote repository.
+
+    Please make sure you have the correct access rights
+
+    and the repository exists.
+### A3.
+    Ubuntu 没装 SSH 服务端 openssh-server，22端口未开启
+
+    解决办法：安装 ssh 服务
+
+    因为安装过程中网络又出问题了，所以又修改了 /etc/resolv.conf 的 nameserver 地址为 8.8.8.8
+
+    ```
+    sudo apt update
+    sudo apt install openssh-server
+    ```
+
+## 实验 7：解决合并分支冲突
+### Q1.
+    什么时候不会产生分支冲突？
+### A1.
+    1. 同一文件，修改不同行
+
+    2. 两个人改完全不同的文件
+
+    3. 一个新增文件，另一个人不动这个文件
+
+## 实验 8：利用 git 来管理 Linux 内核开发
+### Q1.
+    要输入的 username 和 password 分别是什么？
+### A1.
+    username：用户ID（唯一的）
+    
+    password：在平台生成的令牌
+
+## 实验 9：利用 git 来管理项目代码
+### Q1.
+    怎么看文件哪里发生冲突了？
+### A1.
+    从 <<<<<<<< HEAD 到 =======：原分支的内容
+
+    从 ======= 到 >>>>>>>：你自己修改的分支
+
+### Q2.
+    merge 和 rebase 有什么区别？
+### A2.
+    rebase 命令用来改变一串提交基于哪个分支
+
+    merge 命令用来合并别人的修改
+
+### Q3.
+    报错：error: RPC failed; HTTP 413 curl 22 The requested URL returned error: 413 Request Entity Too Large
+
+    fatal: The remote end hung up unexpectedly
+
+    fatal: The remote end hung up unexpectedly
+
+    Everything up-to-date
+### A3.
+    要上传的全部历史对象超过 Gitee http 单次上传上限，直接被 git 拒绝了
+    
+    解决办法 1：切换 SSH 协议（不行）
+
+    需要生成 SSH 公钥：
+
+    ```
+    ssh-keygen -t rsa -C "gitee 绑定的邮箱"
+    ```
+    生成完，密钥文件放在：~/.ssh/
+
+    id_rsa：私钥（不能发给任何人）
+
+    id_rsa.pub：公钥，就是我们要复制放到 Gitee 网页上的内容
+    ```
+     cat ~/.ssh/id_rsa.pub
+    ```
+    
+    解决办法 2：不要把完整内核作为 origin 仓库内容，不带内核全部历史
+
+## 今日碎碎念
+    我的书已经看到第 7 章了，实验怎么才刚刚把第 2 章做完TAT
+    
+    青柠味薯片真的很好吃！
