@@ -87,19 +87,19 @@ chmod +x init
 ```
 find . -print0 | cpio --null -ov --format=newc | gzip -9 > ../initramfs.cpio.gz
 ```
-    1. find .
+    （1） find .
 
     遍历 **当前 rootfs 目录下所有文件**
 
-    2. cpio --format=newc
+    （2） cpio --format=newc
 
     按照 **Linux 内核识别的 initramfs 格式** 打包
 
-    3. gzip -9
+    （3） gzip -9
 
     高强度压缩，生成最终镜像
 
-    4. ../initramfs.cpio.gz
+    （4） ../initramfs.cpio.gz
 
     输出到 **内核目录下**，供 QEMU `-initrd` 加载
 
