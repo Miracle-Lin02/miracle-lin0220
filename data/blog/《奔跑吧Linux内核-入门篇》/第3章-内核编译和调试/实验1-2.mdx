@@ -60,11 +60,8 @@ summary: "做第 3 章实验 1-2 时遇到的问题及解决方法"
 ### Q3.
     报错：Kernel panic - not syncing: VFS: Unable to mount root fs on unknown-block(0,0)
 ### A3.
-问题原因：
-1. 脚本命名错误：外部 initramfs 模式下，内核只识别根目录 /init，不识别 linuxrc，导致内核不认为是根文件系统，转而寻找磁盘分区；
-2. 内核内置 initramfs 配置填写相对路径，打包为空，无法挂载；
-3. init 脚本执行失败、无有效控制台，根文件系统无法初始化。
-最终根治方案：
+解决办法：
+
 自制最小根文件系统（rootfs）：
 
 - 放弃 linuxrc，统一使用根目录/init 作为启动脚本；
@@ -102,7 +99,7 @@ find . -print0 | cpio --null -ov --format=newc | gzip -9 > ../initramfs.cpio.gz
 
 高强度压缩，生成最终镜像
 
-4. > ../initramfs.cpio.gz
+4. ../initramfs.cpio.gz
 
 输出到 **内核目录下**，供 QEMU `-initrd` 加载
 
