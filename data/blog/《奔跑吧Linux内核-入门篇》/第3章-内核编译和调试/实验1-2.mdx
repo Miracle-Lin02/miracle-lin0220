@@ -116,12 +116,14 @@ Ubuntu 交叉编译环境、aarch64 架构、Linux4.0 内核、Busybox1.24.2、Q
 处理方式：无害警告，忽略；可选加 QEMU 参数 -rtc base=localtime 修复。
 最终成功标准 & 终极正确配置
 1. 合格根文件系统 /init 脚本
+```
 #!/bin/sh
 echo "==== /init start ===="
 mount -t proc none /proc
 mount -t sysfs none /sys
 echo "proc/sys mounted"
 exec /bin/sh 0</dev/console 1>/dev/console 2>/dev/console
+```
 
 2. 必备前置操作
 - Busybox 静态编译、aarch64 架构；
