@@ -60,61 +60,19 @@ summary: "做第 3 章实验 1-2 时遇到的问题及解决方法"
 ### Q3.
     报错：Kernel panic - not syncing: VFS: Unable to mount root fs on unknown-block(0,0)
 ### A3.
-Linux4.0 + QEMU AArch64 + Busybox 根文件系统 全套报错与解决总结
-# Linux4.0 + QEMU AArch64 + Busybox 根文件系统 全套报错与解决总结
-实验环境
-Ubuntu 交叉编译环境、aarch64 架构、Linux4.0 内核、Busybox1.24.2、QEMU 模拟器、外部 initramfs(cpio.gz) 最小根文件系统
-问题1：QEMU 启动参数报错 invalid option（-initramfs 无效）
-报错信息：qemu-system-aarch64: -initramfs: invalid option
-问题原因：本机 QEMU 版本较旧，不支持新版参数 -initramfs，仅支持老式 -initrd 加载 cpio.gz 根文件系统。
-解决方法：将启动参数 -initramfs 改为 -initrd。
-问题2：启动刷屏报错 can't open /dev/tty2 / tty3 / tty4
-报错信息：can't open /dev/tty2: No such file or directory
 问题原因：
-- QEMU AArch64 virt 平台串口设备为ttyAMA0，而非 PC 端的 tty2/tty3；
-- 未指定正确串口控制台，Busybox 默认寻找 PC 终端设备，导致反复报错；
-- 内核未绑定正确串口波特率与早期控制台。
-解决方法：
-- 内核启动参数添加：console=ttyAMA0,115200 earlycon=pl011,0x09000000；
-- 废弃 tty2/tty3 终端配置，全程使用 ARM 平台标准串口 ttyAMA0。
-问题3：VFS: Unable to mount root fs 内核恐慌（最核心报错）
-报错信息：VFS: Cannot open root device "(null)" / Kernel panic - not syncing: VFS: Unable to mount root fs on unknown-block(0,0)
-问题根源（多个叠加）：
 1. 脚本命名错误：外部 initramfs 模式下，内核只识别根目录 /init，不识别 linuxrc，导致内核不认为是根文件系统，转而寻找磁盘分区；
 2. 内核内置 initramfs 配置填写相对路径，打包为空，无法挂载；
 3. init 脚本执行失败、无有效控制台，根文件系统无法初始化。
 最终根治方案：
+自制最小根文件系统（rootfs）：
+
 - 放弃 linuxrc，统一使用根目录/init 作为启动脚本；
-- 固定使用 外部 initrd 加载 cpio.gz（放弃容易出错的内核内置打包方案）；
-- 每次修改根文件系统必须重新执行 cpio 打包命令。
-问题4：Attempted to kill init! exitcode=0x00000000
-报错信息：Kernel panic - not syncing: Attempted to kill init! exitcode=0x00000000（PID1 为 sh）
-问题原因：
-- Shell 启动后无标准输入输出控制台（stdin/stdout 缺失）；
-- 1 号进程 sh 直接退出，内核无初始化进程，触发恐慌。
-解决方法：
-- Busybox 必须开启静态编译，避免动态库缺失；
-- 预先在 rootfs 打包 /dev/console 设备节点；
-- 启动 sh 时强制绑定控制台 IO 重定向。
-问题5：Attempted to kill init! exitcode=0x00000200
-报错信息：exitcode=0x200（ENOEXEC 执行失败）
-问题原因：脚本启动初期，串口驱动未初始化完成，提前打开 ttyAMA0 设备失败，导致脚本执行中断。
-解决方法：
-- 禁止在脚本开头打开串口设备；
-- 先挂载 proc、sysfs 文件系统，最后再启动 shell 并重定向控制台；
-- 仅依赖预先打包的 /dev/console，不提前操作串口。
-问题6：Warning: unable to open an initial console
-报错信息：Warning: unable to open an initial console.
-问题原因：根文件系统缺少标准控制台设备节点 /dev/console，内核早期无法绑定终端。
-解决方法：打包前手动创建静态设备节点打进 cpio 包：mknod dev/console c 5 1。
-问题7：/bin/sh: can't access tty; job control turned off（最终遗留无害警告）
-现象：成功进入 / # 终端，但提示无 tty 作业控制。
-原因：缺少交互式终端 tty 设备，不影响所有基础命令使用，仅无法使用后台任务控制。
-处理方式：可直接忽略（实验最优状态），如需完美消除可新增 /dev/tty 节点。
-问题8：drivers/rtc/hctosys.c: unable to open rtc device (rtc0)
-原因：QEMU virt 模拟器无硬件 RTC 时钟设备。
-处理方式：无害警告，忽略；可选加 QEMU 参数 -rtc base=localtime 修复。
-最终成功标准 & 终极正确配置
+    ```
+    ~/Desktop/linux-4.0/rootfs/init
+    ```
+- 固定使用 外部 initrd 加载 cpio.gz；
+
 1. 合格根文件系统 /init 脚本
 ```
 #!/bin/sh
@@ -124,26 +82,34 @@ mount -t sysfs none /sys
 echo "proc/sys mounted"
 exec /bin/sh 0</dev/console 1>/dev/console 2>/dev/console
 ```
-
-2. 必备前置操作
-- Busybox 静态编译、aarch64 架构；
-- rootfs 预先创建 /dev/console 节点；
-- init 脚本加可执行权限、去除 Windows 换行符。
-3. 标准打包命令
+给 init 文件加权限
+```
+chmod +x init
+```
+2. 标准打包命令
+```
 find . -print0 | cpio --null -ov --format=newc | gzip -9 > ../initramfs.cpio.gz
+```
+1. find .
 
-4. 最终可用 QEMU 启动命令
+遍历 **当前 rootfs 目录下所有文件**
+
+2. cpio --format=newc
+
+按照 **Linux 内核识别的 initramfs 格式** 打包
+
+3. gzip -9
+
+高强度压缩，生成最终镜像
+
+4. > ../initramfs.cpio.gz
+
+输出到 **内核目录下**，供 QEMU `-initrd` 加载
+
+3. 最终可用 QEMU 启动命令
+```
 qemu-system-aarch64 -machine virt -cpu cortex-a57 -nographic -m 2048 -smp 2 -kernel arch/arm64/boot/Image -append "console=ttyAMA0,115200 earlycon=pl011,0x09000000" -initrd initramfs.cpio.gz
-
-实验核心踩坑总结（重中之重）
-1. 外部 initramfs 必须用 /init，不能用 linuxrc，这是 90% 内核恐慌的根源；
-2. ARM64 QEMU 串口固定为 ttyAMA0，绝对不能用 PC 终端设备；
-3. Busybox 必须静态编译，动态编译必定启动失败；
-4. 设备节点提前打包进镜像，不要在脚本早期动态创建；
-5. 每次修改根文件系统，必须重新打包 cpio，否则修改不生效；
-6. 所有 tty2/tty3 报错、rtc 报错、tty 作业控制警告均为无害提示，不影响实验成功。
-最终实验结果
-内核正常启动、initramfs 根文件系统挂载成功、proc/sys 文件系统挂载正常、成功进入 Busybox 交互式 Shell（/ #），无任何致命内核恐慌，实验圆满完成。
+```
 
 ## 今日碎碎念
-2026.9.23 02：35，我终于把根文件缺失这个问题解决好了TAT根文件缺失的问题总结就暂时先用豆包总结了，因为我实在是太困了TAT，以后有空的话再重新自己写一下。
+2026.9.23 02：35，我终于把根文件缺失这个问题解决好了TAT根文件缺失的问题总结就暂时大概用豆包总结了一下，然后自己改了点，因为我实在是太困了TAT，还有很多地方不明白的等以后学更多了之后再回来看一下吧ovo。
