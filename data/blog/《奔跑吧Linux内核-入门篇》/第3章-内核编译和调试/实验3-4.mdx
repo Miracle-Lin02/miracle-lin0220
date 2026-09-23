@@ -1,0 +1,132 @@
+---
+title: "《奔跑吧Linux内核入门篇》第3章 —— 实验 3-4"
+date: "2026-09-22"
+tags: [linux,kernel_primary]
+draft: false
+summary: "做第 3 章实验 3-4 时遇到的问题及解决方法"
+---
+## 实验 3：通过 Eclipse+QEMU 单步调试内核
+### Q1.
+    使用 sudo apt install eclipse-cdt 下载的 eclipse 打不开，报错
+    ```
+    !SESSION Wed Sep 23 19:55:08 LINT 2026 -----------------------------------------
+    !ENTRY org.eclipse.equinox.launcher 4 0 2026-09-23 19:55:08.539
+    !MESSAGE Exception launching the Eclipse Platform:
+    !STACK
+    java.lang.ClassNotFoundException: org.eclipse.core.runtime.adaptor.EclipseStarter
+        at java.base/java.net.URLClassLoader.findClass(URLClassLoader.java:476)
+        at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:589)
+        at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:522)
+        at org.eclipse.equinox.launcher.Main.invokeFramework(Main.java:626)
+        at org.eclipse.equinox.launcher.Main.basicRun(Main.java:584)
+        at org.eclipse.equinox.launcher.Main.run(Main.java:1438)
+        at org.eclipse.equinox.launcher.Main.main(Main.java:1414)
+    ```
+### A1.
+    Ubuntu 源自带的 eclipse 3.8 太老旧，和现代 Java 完全不兼容，需要自己另外下载安装
+
+    1. 卸载损坏的 eclipse
+    ```
+    sudo apt remove eclipse eclipse-cdt
+    sudo apt autoremove
+    # 删除旧的eclipse缓存目录
+    rm -rf ~/.eclipse
+    ```
+    2. 安装书本指定 Eclipse Oxygen 4,7,3a(Oxygen3, IDE for C/C++)
+    ```
+    cd ~/Downloads
+    wget https://download.eclipse.org/technology/epp/downloads/release/oxygen/3a/eclipse-cpp-oxygen-3a-linux-gtk-x86_64.tar.gz
+    tar -zxvf eclipse-cpp-oxygen-3a-linux-gtk-x86_64.tar.gz -C ~/
+    ```
+    3. 运行 Eclipse
+    ```
+    ~/eclipse/eclipse
+    ```
+
+### Q2.
+    运行 Eclipse 报错 java.lang.NoClassDefFoundError: javax/annotation/PreDestroy
+### A2.
+    报错原因：当前系统用的是 Java11，Jaca11 移除了 javax.annotation 包，而 Eclipse Oxygen 依赖这个包，所以需要用 Java8
+    1. 安装 Java8
+    ```
+    sudo apt update
+    sudo apt install openjdk-8-jdk
+    ```
+    2. 切换 Java 版本
+    ```
+    sudo update-alternatives --config java
+    ```
+    选择 Java8
+    3. 验证当前 java 版本
+    ```
+    java -version
+    ```
+    4. 启动 Eclipse
+    ```
+    ~/eclipse/eclipse
+    ```
+
+### Q3.
+    AARch64 平台调试时，gdb8.1.1存在寄存器包截断 bug，continue无法执行
+### A3.
+    原因：Ubuntu18.04的gdb-multiarch 8.1.1 不支持 AArch64的GDB远程协议，寄存器数据包解析失败。
+
+    解决办法：切换为ARM32（vexpress-a9）平台编译内核，gdb8.1.1支持ARM32远程调试，没有这个bug。
+
+    书上用的就是 ARM32，我自己把runninglinuxkernel包重新下了一遍，编译内核成 ARM64 了TAT
+
+### Q4.
+    Eclipse GDB 远程调试报错：vMustReplyEmpty timeout
+### A4.
+    1. Eclipse CDT默认使用extended-remote扩展远程调试协议；
+
+    2. Ubuntu18.04自带QEMU版本老旧，内置gdbstub没有完整实现extended-remote扩展包，无法响应vMustReplyEmpty能力探测包，握手超时；
+
+    3. 命令行target remote是基础协议，不需要这套扩展探测包，所以命令行gdb可以正常连接。
+
+    解决办法：放弃Eclipse图形调试，使用命令行gdb-multiarch完成远程断点调试，成功在start_kernel函数命中断点，完成实验目标。
+
+    如果想使用 Eclipse 图形调试的话只能使用更新版本的系统了
+
+实验过程：
+```
+# 添加工具链ppa源
+sudo add-apt-repository ppa:ubuntu-toolchain-r/test
+sudo apt update
+
+# 安装arm32 gcc5交叉编译器和g++
+sudo apt install gcc-5-arm-linux-gnueabihf g++-5-arm-linux-gnueabihf
+```
+我记得这个 gcc5 系统里应该是有的，不知道为啥还要再下一遍TAT
+```
+# 清除 ARM64 编译旧产物
+make clean
+# 加载 vexpress-a9 开发板配置，指定交叉编译器、主机编译器
+make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- CC=arm-linux-gnueabihf-gcc-5 HOSTCC=/usr/bin/gcc-5 vexpress_defconfig
+# 编译内核
+make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- CC=arm-linux-gnueabihf-gcc-5 HOSTCC=/usr/bin/gcc-5 -j$(nproc)
+# 校验编译产物
+file vmlinux
+file arch/arm/boot/zImage
+# 运行 QEMU
+# -S：启动后冻结 CPU，停止内核，等待调试器接入
+# -s：等价 -gdb tcp::1234，开启 1234 端口 GDB 远程调试服务
+qemu-system-arm -nographic -M vexpress-a9 -m 1024M -kernel arch/arm/boot/zImage -dtb arch/arm/boot/dts/vexpress-v2p-ca9.dtb -append "rdinit=/linuxrc console=ttyAMA0 loglevel=8" -S -s
+'''
+'''
+# GDB 远程断点调试（新开终端）
+gdb-multiarch vmlinux
+# 依次输入命令
+set architecture arm
+target remote localhost:1234
+b start_kernel
+c
+```
+
+## 实验 4：在 QEMU 中添加文件系统的支持
+这个原理已经明白了，实验也显示添加成功了，但是又因为根文件问题无法在QEMU中显示出终端TAT
+
+打算等以后有机会的话再回来做这个实验
+
+卡这个实验已经卡了一天了TAT
+
