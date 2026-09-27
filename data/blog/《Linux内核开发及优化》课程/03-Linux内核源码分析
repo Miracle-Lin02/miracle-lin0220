@@ -1,0 +1,42 @@
+---
+title: "《Linux内核开发及优化》第3课-Linux内核源码分析"
+date: "2026-09-27"
+tags: [linux,kernel_primary]
+draft: false
+summary: "03-Linux内核源码分析课堂跟练"
+---
+## 安装 Vscode
+1. 从官网下载 deb 包
+2. 解压安装
+```
+sudo dpkg -i code_1.139.1-1790309529_amd64.deb
+sudo apt -f install
+```
+
+## 下载 Linux 5.19.3 内核源码：
+```
+# 1. 安装依赖（wget + 解压工具）
+sudo apt update
+sudo apt install wget xz-utils
+
+# 2. 下载 linux 5.19.3
+wget https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.19.3.tar.xz
+
+# 3. 解压
+tar -xf linux-5.19.3.tar.xz
+cd linux-5.19.3
+```
+
+## 安装 C/C++ 扩展
+
+### Q1. 
+Warning：You are running this virtual machine with side channel mitigations enabled
+### A1. 
+开启了**Spectre/Meltdown（幽灵 / 熔断）侧信道攻击安全缓解机制**，安全提升，但 CPU 性能大幅下降,编译内核会特别卡慢。
+
+**解决办法**：虚拟机 → 设置 → 选项 → 高级 → 为启用了 Hyper‑V 的主机禁用侧通道缓解 → 确定
+
+### Q2.
+虚拟机时间不对应该怎么调整？
+### A2.
+把时区改到 China ShangHai
